@@ -9,6 +9,7 @@ yh3429
 library (tidyverse)
 library (readxl)
 library(rvest)
+library(patchwork)
 ```
 
 ##### The raw data
@@ -114,3 +115,134 @@ each_city_prop %>%
 ```
 
 ![](hw5_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
+
+## Problem 3
+
+##### Create a function
+
+``` r
+sim_t_test = function (n=30, mu, sigma=5){
+  
+  sim_data = tibble(
+    x= rnorm(n, mean=mu, sd=sigma),
+  )
+  
+  sim_data %>% 
+    t.test() %>% 
+    broom::tidy() %>% 
+    select (estimate, p.value)
+}
+```
+
+##### when mu=0
+
+``` r
+sim_results_0 = 
+  expand.grid(
+    set_mu =0,
+    iter=1:5000
+  ) %>% 
+  mutate(
+    estimate_df = map (.x=set_mu, ~sim_t_test(mu=.x))
+  ) %>% unnest(estimate_df)
+```
+
+##### when mu={1,2,3,4,5,6}
+
+``` r
+sim_results_all = 
+  expand.grid(
+    set_mu =c(1,2,3,4,5,6),
+    iter=1:5000
+  ) %>% 
+  mutate(
+    estimate_df = map (.x=set_mu, ~sim_t_test(mu=.x))
+  ) %>% unnest(estimate_df)
+```
+
+##### Make a plot showing the proportion of times the null was rejected
+
+``` r
+rejected_null_pl =
+  sim_results_all %>% 
+  group_by(set_mu) %>% 
+  summarise(total_times =n(),
+             rejected_times = sum(p.value<0.05)) %>% 
+  mutate (proportion= rejected_times/total_times) %>% 
+  ggplot(aes(x = set_mu, y = proportion)) +
+  geom_point() +
+  geom_line()  +
+  scale_x_continuous( breaks = 1:6 )+
+  labs(title = "The proportion of times the null was rejected",
+       y = "Proportion (The power of the test)",
+       x = "The true value of μ") 
+
+rejected_null_pl
+```
+
+![](hw5_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
+
+Description: According to the plot, when the true μ increases, the
+proportion of times the null was rejected (the power of the test) also
+increases. The larger effect size, the larger power. And the power of
+the test will increase closely to 1.
+
+##### Make a plot: showing the average estimate of μ-hat on the y axis and the true value of μ on the x axis
+
+``` r
+esti_mu_plot =
+  sim_results_all %>% 
+  group_by(set_mu) %>% 
+  mutate (aver_esti = mean(estimate)) %>% 
+  ggplot (aes(x=set_mu, y=aver_esti))+
+  geom_point()+
+  geom_line()+
+  scale_x_continuous( breaks = 1:6 )+
+   scale_y_continuous( breaks = 1:6 )+
+  labs(title = "All samples : the average estimate μ for each true value of μ",
+       y = "The average estimate μ)",
+       x = "The true value of μ")
+
+esti_mu_plot
+```
+
+![](hw5_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
+
+##### Make a second plot: the average estimate of μ-hat only in samples for which the null was rejected on the y axis and the true value of μ on the x axis
+
+``` r
+  esti_mu_plot2 =
+  sim_results_all %>% 
+  group_by(set_mu) %>% 
+  filter (p.value<0.05) %>% 
+  mutate (aver_esti = mean(estimate)) %>% 
+  ggplot (aes(x=set_mu, y=aver_esti))+
+  geom_point()+
+  geom_line()+
+  scale_x_continuous( breaks = 1:6 )+
+  scale_y_continuous( breaks = 1:6 )+
+  labs(title = "Only in samples null rejected: the average estimate μ for each true value of μ",
+       y = "The average estimate μ)",
+       x = "The true value of μ")
+
+  esti_mu_plot2
+```
+
+![](hw5_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
+
+##### Juxtapose two plots
+
+``` r
+esti_mu_plot + esti_mu_plot2
+```
+
+![](hw5_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
+
+Description: The sample average of μ-hat across tests for which the null
+is rejected approximately is not always equal to the true value of μ.
+When the true value of μ from 1-4, the average estimate μ-hat is bigger
+than the true value of μ. When the true value of μ from 4-6, the average
+estimate μ-hat is approximately equal the true value of μ. The reason is
+the smaller the true value of μ with smaller power. Without enough
+bigger effect size and power,the average estimate of μ (for which the
+null is rejected) does not equal to the true mean.
